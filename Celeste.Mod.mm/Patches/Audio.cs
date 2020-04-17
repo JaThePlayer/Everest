@@ -78,7 +78,7 @@ namespace Celeste {
         public static void Unload() {
             if (system == null)
                 return;
-            
+
             // Vanilla only calls unloadAll.
             system.unloadAll().CheckFMOD();
             system.release().CheckFMOD();
@@ -184,6 +184,8 @@ namespace Celeste {
                 return path;
 
             desc.getPath(out path);
+            if (string.IsNullOrEmpty(path))
+                path = "guid://" + id.ToString();
             return cachedPaths[id] = path;
         }
 
@@ -210,6 +212,10 @@ namespace Celeste {
 
             if (cachedModEvents.TryGetValue(path, out desc)) {
                 status = RESULT.OK;
+
+            } else if (path.StartsWith("guid://")) {
+                status = system.getEventByID(new Guid(path.Substring(7)), out desc);
+
             } else {
                 status = system.getEvent(path, out desc);
             }

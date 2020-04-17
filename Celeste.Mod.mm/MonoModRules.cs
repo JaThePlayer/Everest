@@ -259,6 +259,24 @@ namespace MonoMod {
     [MonoModCustomMethodAttribute("RemoveCommandAttributeFromVanillaLoadMethod")]
     class RemoveCommandAttributeFromVanillaLoadMethodAttribute : Attribute { };
 
+    /// <summary>
+    /// Patch the hardcoded DelayTime in TriggerSpikes to make it customizable.
+    /// </summary>
+    [MonoModCustomMethodAttribute("PatchTriggerSpikesDelayTime")]
+    class PatchTriggerSpikesDelayTimeAttribute : Attribute { };
+
+    /// <summary>
+    /// Patch the fake heart color to make it customizable.
+    /// </summary>
+    [MonoModCustomMethodAttribute("PatchFakeHeartColor")]
+    class PatchFakeHeartColorAttribute : Attribute { };
+
+    /// <summary>
+    /// Patch the file naming rendering to hide the "switch between katakana and hiragana" prompt when the menu is not focused.
+    /// </summary>
+    [MonoModCustomMethodAttribute("PatchOuiFileNamingRendering")]
+    class PatchOuiFileNamingRenderingAttribute : Attribute { };
+
 
     static class MonoModRules {
 
@@ -602,6 +620,28 @@ namespace MonoMod {
             if (m_LoadCustomEntity == null)
                 return;
 
+            // We also need to do special work in the cctor.
+            MethodDefinition m_cctor = method.DeclaringType.FindMethod(".cctor");
+            if (m_cctor == null)
+                return;
+
+            FieldDefinition f_LoadStrings = method.DeclaringType.FindField("_LoadStrings");
+            if (f_LoadStrings == null)
+                return;
+
+            Mono.Collections.Generic.Collection<Instruction> cctor_instrs = m_cctor.Body.Instructions;
+            ILProcessor cctor_il = m_cctor.Body.GetILProcessor();
+
+            // Remove cctor ret for simplicity. Re-add later.
+            cctor_instrs.RemoveAt(cctor_instrs.Count - 1);
+
+            TypeDefinition td_LoadStrings = f_LoadStrings.FieldType.Resolve();
+            MethodReference m_LoadStrings_Add = MonoModRule.Modder.Module.ImportReference(td_LoadStrings.FindMethod("Add"));
+            m_LoadStrings_Add.DeclaringType = f_LoadStrings.FieldType;
+            MethodReference m_LoadStrings_ctor = MonoModRule.Modder.Module.ImportReference(td_LoadStrings.FindMethod("System.Void .ctor()"));
+            m_LoadStrings_ctor.DeclaringType = f_LoadStrings.FieldType;
+            cctor_il.Emit(OpCodes.Newobj, m_LoadStrings_ctor);
+
             Mono.Collections.Generic.Collection<Instruction> instrs = method.Body.Instructions;
             ILProcessor il = method.Body.GetILProcessor();
             for (int instri = 0; instri < instrs.Count; instri++) {
@@ -657,8 +697,17 @@ namespace MonoMod {
                     instri++;
                 }
 
+                if (instr.OpCode == OpCodes.Ldstr) {
+                    cctor_il.Emit(OpCodes.Dup);
+                    cctor_il.Emit(OpCodes.Ldstr, instr.Operand);
+                    cctor_il.Emit(OpCodes.Callvirt, m_LoadStrings_Add);
+                    cctor_il.Emit(OpCodes.Pop); // HashSet.Add returns a bool.
+                }
+
             }
 
+            cctor_il.Emit(OpCodes.Stsfld, f_LoadStrings);
+            cctor_il.Emit(OpCodes.Ret);
         }
 
         public static void PatchBackdropParser(MethodDefinition method, CustomAttribute attrib) {
@@ -1600,7 +1649,7 @@ namespace MonoMod {
         }
 
         public static void PatchStrawberryInterface(ICustomAttributeProvider provider, CustomAttribute attrib) {
-            //MonoModRule.Modder.FindType("Celeste.Mod.IStrawberry");
+            // MonoModRule.Modder.FindType("Celeste.Mod.IStrawberry");
             if (IStrawberry == null) {
                 IStrawberry = new InterfaceImplementation(MonoModRule.Modder.FindType("Celeste.Mod.IStrawberry"));
             }
@@ -1963,7 +2012,100 @@ namespace MonoMod {
             }
         }
 
+        public static void PatchTriggerSpikesDelayTime(MethodDefinition method, CustomAttribute attrib) {
+            FieldDefinition f_customDelayTime = MonoModRule.Modder.FindType("Celeste.TriggerSpikes").Resolve().FindField("customDelayTime");
+            FieldDefinition f_Parent = method.DeclaringType.FindField("Parent");
+            if (f_customDelayTime == null || f_Parent == null)
+                return;
+
+            Mono.Collections.Generic.Collection<Instruction> instrs = method.Body.Instructions;
+            ILProcessor il = method.Body.GetILProcessor();
+            for (int instri = 0; instri < instrs.Count; instri++) {
+                Instruction instr = instrs[instri];
+
+                if (instr.OpCode == OpCodes.Ldc_R4 && ((float) instr.Operand) == 0.4f) {
+                    // replace 0.4f with this.Parent.customDelayTime
+                    instr.OpCode = OpCodes.Ldarg_0;
+                    instrs.Insert(instri + 1, il.Create(OpCodes.Ldfld, f_Parent));
+                    instrs.Insert(instri + 2, il.Create(OpCodes.Ldfld, f_customDelayTime));
+                }
+            }
+        }
+
+        public static void PatchFakeHeartColor(MethodDefinition method, CustomAttribute attrib) {
+            MethodDefinition m_getCustomColor = method.DeclaringType.FindMethod("Celeste.AreaMode _getCustomColor(Celeste.AreaMode,Celeste.FakeHeart)");
+            if (m_getCustomColor == null)
+                return;
+
+            Mono.Collections.Generic.Collection<Instruction> instrs = method.Body.Instructions;
+            ILProcessor il = method.Body.GetILProcessor();
+            for (int instri = 0; instri < instrs.Count; instri++) {
+                Instruction instr = instrs[instri];
+
+                if (instr.OpCode == OpCodes.Call && ((MethodReference) instr.Operand).Name == "Choose") {
+                    instrs.Insert(instri + 1, il.Create(OpCodes.Ldarg_0));
+                    instrs.Insert(instri + 2, il.Create(OpCodes.Call, m_getCustomColor));
+                }
+            }
+        }
+
+        public static void PatchOuiFileNamingRendering(MethodDefinition method, CustomAttribute attrib) {
+            MethodDefinition m_shouldDisplaySwitchAlphabetPrompt = method.DeclaringType.FindMethod("System.Boolean _shouldDisplaySwitchAlphabetPrompt()");
+            if (m_shouldDisplaySwitchAlphabetPrompt == null)
+                return;
+
+            Mono.Collections.Generic.Collection<Instruction> instrs = method.Body.Instructions;
+            ILProcessor il = method.Body.GetILProcessor();
+            for (int instri = 0; instri < instrs.Count; instri++) {
+                Instruction instr = instrs[instri];
+
+                if (instr.OpCode == OpCodes.Callvirt && ((MethodReference) instr.Operand).Name == "get_Japanese") {
+                    instr.OpCode = OpCodes.Call;
+                    instr.Operand = m_shouldDisplaySwitchAlphabetPrompt;
+                }
+            }
+        }
+
+        public static void PatchCrushBlockFirstAlarm(MethodDefinition method) {
+            if (method?.Body == null)
+                return;
+
+            ILProcessor il = method.Body.GetILProcessor();
+            Mono.Collections.Generic.Collection<Instruction> instrs = method.Body.Instructions;
+
+            Instruction instrPop = null;
+            for (int instri = 1; instri < instrs.Count; instri++) {
+                Instruction instr = instrs[instri];
+
+                if (instrs[instri - 1].OpCode == OpCodes.Callvirt && (instrs[instri - 1].Operand as MethodReference)?.GetID() == "Celeste.SoundSource Celeste.SoundSource::Stop(System.Boolean)" &&
+                    instr.OpCode == OpCodes.Pop) {
+                    instrPop = instr;
+                    break;
+                }
+            }
+
+            if (instrPop == null)
+                return;
+
+            for (int instri = 0; instri < instrs.Count; instri++) {
+                Instruction instr = instrs[instri];
+
+                if (instr.OpCode == OpCodes.Ldfld && (instr.Operand as FieldReference)?.FullName == "Celeste.SoundSource Celeste.CrushBlock::currentMoveLoopSfx") {
+                    instri++;
+
+                    instrs.Insert(instri, il.Create(OpCodes.Dup));
+                    instri++;
+
+                    instrs.Insert(instri, il.Create(OpCodes.Brfalse, instrPop));
+                    instri++;
+                }
+            }
+        }
+
         public static void PostProcessor(MonoModder modder) {
+            // Patch CrushBlock::AttackSequence's first alarm delegate manually because how would you even annotate it?
+            PatchCrushBlockFirstAlarm(modder.Module.GetType("Celeste.CrushBlock/<>c__DisplayClass41_0")?.FindMethod("<AttackSequence>b__1"));
+
             // Patch previously registered AreaCompleteCtors and LevelExitRoutines _in that order._
             foreach (MethodDefinition method in AreaCompleteCtors)
                 PatchAreaCompleteCtor(method);

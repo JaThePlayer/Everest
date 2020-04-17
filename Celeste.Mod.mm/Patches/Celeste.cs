@@ -32,7 +32,9 @@ namespace Celeste {
         public static extern void orig_Main(string[] args);
         [MonoModPublic]
         public static void Main(string[] args) {
-            Thread.CurrentThread.Name = "Main Thread";
+            if (Thread.CurrentThread.Name != "Main Thread") {
+                Thread.CurrentThread.Name = "Main Thread";
+            }
 
             if (File.Exists("launch.txt")) {
                 args =
@@ -92,31 +94,37 @@ namespace Celeste {
 
             if (File.Exists("log.txt"))
                 File.Delete("log.txt");
+
             using (Stream fileStream = new FileStream("log.txt", FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
             using (StreamWriter fileWriter = new StreamWriter(fileStream, Console.OutputEncoding))
             using (LogWriter logWriter = new LogWriter {
                 STDOUT = Console.Out,
                 File = fileWriter
             }) {
-                Console.SetOut(logWriter);
-
-                AppDomain.CurrentDomain.UnhandledException += UnhandledExceptionHandler;
-
                 try {
-                    Everest.ParseArgs(args);
-                    orig_Main(args);
-                } catch (Exception e) {
-                    CriticalFailureHandler(e);
-                    return;
+                    Console.SetOut(logWriter);
+
+                    AppDomain.CurrentDomain.UnhandledException += UnhandledExceptionHandler;
+
+                    try {
+                        Everest.ParseArgs(args);
+                        orig_Main(args);
+                    } catch (Exception e) {
+                        CriticalFailureHandler(e);
+                        return;
+                    } finally {
+                        Instance?.Dispose();
+                    }
+
+                    Everest.Shutdown();
                 } finally {
-                    Instance?.Dispose();
+                    if (logWriter.STDOUT != null) {
+                        Console.SetOut(logWriter.STDOUT);
+                        logWriter.STDOUT = null;
+                    }
                 }
-
-                Everest.Shutdown();
-
-                Console.SetOut(logWriter.STDOUT);
-                logWriter.STDOUT = null;
             }
+
         }
 
         private static void UnhandledExceptionHandler(object sender, UnhandledExceptionEventArgs e) {
@@ -131,7 +139,10 @@ namespace Celeste {
 
         private static bool _CriticalFailureIsUnhandledException;
         public static void CriticalFailureHandler(Exception e) {
+            Everest.LogDetours();
+
             (e ?? new Exception("Unknown exception")).LogDetailed("CRITICAL");
+
             ErrorLog.Write(
 @"Yo, I heard you like Everest so I put Everest in your Everest so you can Ever Rest while you Ever Rest.
 
@@ -141,6 +152,7 @@ Probably by force-installing Everest on top of Everest on top of Everest.
 IF YOU WANT TO HELP US FIX THIS:
 Please join the Celeste Discord server and drag and drop your log.txt into #modding_help.
 https://discord.gg/6qjaePQ");
+
             ErrorLog.Open();
             if (!_CriticalFailureIsUnhandledException)
                 Environment.Exit(-1);

@@ -28,6 +28,7 @@ namespace Celeste.Mod {
 
             private static Thread Worker;
             private static readonly Queue<Action> Queue = new Queue<Action>();
+            private static CancellationTokenSource WaitTokenSource;
 
             public static void Initialize() {
                 Worker = new Thread(WorkerLoop);
@@ -35,6 +36,8 @@ namespace Celeste.Mod {
                 Worker.Priority = ThreadPriority.Lowest;
                 Worker.IsBackground = true;
                 Worker.Start();
+
+                WaitTokenSource = new CancellationTokenSource();
 
                 Events.Celeste.OnExiting += OnGameExit;
 
@@ -83,15 +86,18 @@ namespace Celeste.Mod {
                 DiscordRpc.UpdatePresence(DiscordPresence);
 
                 while (Worker != null) {
-                    if (Queue.Count == 0) {
-                        Thread.Yield();
+                    while (WaitTokenSource == null)
                         continue;
+                    try {
+                        WaitTokenSource.Token.WaitHandle.WaitOne();
+                    } catch (OperationCanceledException) {
+                    } catch (ObjectDisposedException) {
                     }
 
-                    Action cb;
-                    lock (Queue)
-                        cb = Queue.Dequeue();
-                    cb?.Invoke();
+                    lock (Queue) {
+                        if (Queue.Count > 0)
+                            Queue.Dequeue()?.Invoke();
+                    }
                 }
 
                 DiscordRpc.Shutdown();
@@ -109,6 +115,9 @@ namespace Celeste.Mod {
 
             private static void OnGameExit() {
                 Worker = null;
+                WaitTokenSource?.Cancel();
+                WaitTokenSource?.Dispose();
+                WaitTokenSource = null;
             }
 
             private static void OnMainMenu(OuiMainMenu menu, List<MenuButton> buttons) {
@@ -116,7 +125,6 @@ namespace Celeste.Mod {
             }
             private static void OnLoadLevel(Level level, Player.IntroTypes playerIntro, bool isFromLoader) {
                 lock (DiscordPresence) {
-                    DateTime now = DateTime.UtcNow;
                     if (DiscordPresence.startTimestamp == 0)
                         DiscordPresence.startTimestamp = DateTimeToDiscordTime(DateTime.UtcNow);
                     DiscordPresence.endTimestamp = 0;
@@ -145,6 +153,8 @@ namespace Celeste.Mod {
                     .Replace("((side))", ((char) ('A' + (int) session.Area.Mode)).ToString())
                     .Replace("((deaths))", session.Deaths.ToString())
                     .Replace("((strawberries))", session.Strawberries.Count.ToString())
+                    .Replace("((room))", session.LevelData.Name)
+                    .Replace("((chapternumber))", session.Area.ChapterIndex.ToString())
                 ;
             }
 
@@ -177,6 +187,9 @@ namespace Celeste.Mod {
                 lock (Queue) {
                     Queue.Enqueue(UpdatePresence);
                 }
+                WaitTokenSource.Cancel();
+                WaitTokenSource.Dispose();
+                WaitTokenSource = new CancellationTokenSource();
             }
 
             private static readonly Action UpdatePresence = () => {

@@ -62,6 +62,12 @@ namespace Celeste.Mod.Core {
             }
         }
 
+        public override void SaveSettings() {
+            Settings.CurrentVersion = Everest.Version.ToString();
+
+            base.SaveSettings();
+        }
+
         public override void Load() {
             Everest.Events.MainMenu.OnCreateButtons += CreateMainMenuButtons;
             Everest.Events.Level.OnCreatePauseMenuButtons += CreatePauseMenuButtons;
@@ -78,7 +84,12 @@ namespace Celeste.Mod.Core {
                 // CTRL + F5: Quick-restart the entire game.
                 if (MInput.Keyboard.Check(Keys.LeftControl) ||
                     MInput.Keyboard.Check(Keys.RightControl)) {
-                    Everest.QuickFullRestart();
+
+                    // block restarting while the game is starting up. this might lead to crashes
+                    if (!(Engine.Scene is GameLoader)) {
+                        Everest.QuickFullRestart();
+                    }
+
                     return;
                 }
 
@@ -247,6 +258,10 @@ namespace Celeste.Mod.Core {
             base.CreateModMenuSection(menu, inGame, snapshot);
 
             if (!inGame) {
+                menu.Add(new TextMenu.Button(Dialog.Clean("modoptions_coremodule_oobe")).Pressed(() => {
+                    OuiModOptions.Instance.Overworld.Goto<OuiOOBE>();
+                }));
+
                 menu.Add(new TextMenu.Button(Dialog.Clean("modoptions_coremodule_soundtest")).Pressed(() => {
                     OuiModOptions.Instance.Overworld.Goto<OuiSoundTest>();
                 }));

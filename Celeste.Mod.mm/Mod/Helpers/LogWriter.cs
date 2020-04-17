@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Celeste.Mod.Helpers {
     public class LogWriter : TextWriter {
@@ -48,7 +49,9 @@ namespace Celeste.Mod.Helpers {
 
         public override void Close() {
             STDOUT?.Close();
+            STDOUT = null;
             File?.Close();
+            File = null;
         }
 
     }

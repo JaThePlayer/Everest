@@ -22,6 +22,10 @@ namespace Celeste {
         private static string versionFull;
         private static Texture2D identicon;
         private static float everestTime;
+        private static bool isPieScreen; // on the pie screen, we should display the jdenticon on the left side of the screen, instead of the middle.
+
+        private float buttonTimerDelay;
+        private float buttonTimerEase;
 
         public patch_AreaComplete(Session session, XmlElement xml, Atlas atlas, HiresSnow snow, MapMetaCompleteScreen meta)
             : base(session, xml, atlas, snow) {
@@ -37,10 +41,13 @@ namespace Celeste {
         public override void Begin() {
             base.Begin();
 
-            InitAreaCompleteInfoForEverest();
+            InitAreaCompleteInfoForEverest(pieScreen: false);
+
+            buttonTimerDelay = 2.2f;
+            buttonTimerEase = 0f;
         }
 
-        public static void InitAreaCompleteInfoForEverest() {
+        public static void InitAreaCompleteInfoForEverest(bool pieScreen) {
             if (Everest.Flags.IsDisabled)
                 return;
 
@@ -50,6 +57,8 @@ namespace Celeste {
                 using (Stream stream = Identicon.FromHash(Everest.InstallationHash, 100).SaveAsPng())
                     identicon = Texture2D.FromStream(Celeste.Instance.GraphicsDevice, stream);
             }
+
+            isPieScreen = pieScreen;
         }
 
         public extern void orig_End();
@@ -57,6 +66,47 @@ namespace Celeste {
             orig_End();
 
             DisposeAreaCompleteInfoForEverest();
+        }
+
+        public extern void orig_Update();
+        public override void Update() {
+            orig_Update();
+
+            buttonTimerDelay -= Engine.DeltaTime;
+            if (buttonTimerDelay <= 0f) {
+                buttonTimerEase = Calc.Approach(buttonTimerEase, 1f, Engine.DeltaTime * 4f);
+            }
+        }
+
+        private extern void orig_RenderUI();
+        private void RenderUI() {
+            orig_RenderUI();
+
+            if (buttonTimerEase > 0f && Settings.Instance.SpeedrunClock == SpeedrunType.Off) {
+                MTexture button = Input.GuiButton(Input.MenuConfirm);
+
+                Vector2 pos = new Vector2(1860f - button.Width, 1020f - button.Height);
+                float alpha = buttonTimerEase * buttonTimerEase;
+                float scale = (0.9f + buttonTimerEase * 0.1f);
+
+                for (int x = -1; x <= 1; x++) {
+                    for (int y = -1; y <= 1; y++) {
+                        if (x != 0 && y != 0) {
+                            button.DrawCentered(
+                                pos + new Vector2(x, y),
+                                Color.Black * alpha * alpha * alpha * alpha,
+                                Vector2.One * scale
+                            );
+                        }
+                    }
+                }
+
+                button.DrawCentered(
+                    pos,
+                    Color.White * alpha,
+                    Vector2.One * scale
+                );
+            }
         }
 
         public static void DisposeAreaCompleteInfoForEverest() {
@@ -89,7 +139,7 @@ namespace Celeste {
             float waveStart = everestTime * 1.3f;
             float rotation = MathHelper.Pi * 0.02f * (float) Math.Sin(everestTime * 0.8f);
 
-            Vector2 position = new Vector2(1920f * 0.5f, 1080f - 150f);
+            Vector2 position = new Vector2(1920f * (isPieScreen ? 0.05f : 0.5f), 1080f - 150f);
             Rectangle clipRect = identicon.Bounds;
             clipRect.Height = sliceSize;
             int i = 0;

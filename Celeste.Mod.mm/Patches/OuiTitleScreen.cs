@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Collections;
 using Celeste.Mod.Core;
+using Celeste.Mod.UI;
 
 namespace Celeste {
     class patch_OuiTitleScreen : OuiTitleScreen {
@@ -77,6 +78,13 @@ namespace Celeste {
 
             // Initialize DebugRC here, as the play mode can change during the intro.
             Everest.DebugRC.Initialize();
+        }
+
+        public extern bool orig_IsStart(Overworld overworld, Overworld.StartMode start);
+        public override bool IsStart(Overworld overworld, Overworld.StartMode start) {
+            if (CoreModule.Settings.CurrentVersion == null && !overworld.IsCurrent<OuiOOBE>())
+                start = Overworld.StartMode.MainMenu;
+            return orig_IsStart(overworld, start);
         }
 
         public extern void orig_Update();
@@ -158,7 +166,7 @@ namespace Celeste {
             orig_Render();
 
             arrowToVanilla?.DrawJustified(new Vector2(1920f - 80f + (textY - 1000f) * 2f, 540f), new Vector2(1f, 0.5f), Color.White * alpha);
-            
+
             updateTex?.DrawJustified(new Vector2(80f - 4f, textY + 8f * (1f - updateAlpha) + 2f), new Vector2(1f, 1f), Color.White * updateAlpha, 0.8f);
 
             alpha = alphaPrev;
