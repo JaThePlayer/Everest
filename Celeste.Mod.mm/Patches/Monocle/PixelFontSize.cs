@@ -2,6 +2,7 @@
 
 using Celeste.Mod;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace Monocle {
     class patch_PixelFontSize : PixelFontSize {
@@ -35,6 +36,8 @@ namespace Monocle {
                 HeightOf(text) * justify.Y
             );
 
+            var batch = Monocle.Draw.SpriteBatch;
+
             for (int i = 0; i < text.Length; i++) {
                 if (text[i] == '\n') {
                     offset.X = 0f;
@@ -48,31 +51,40 @@ namespace Monocle {
                 if (!Characters.TryGetValue(text[i], out c))
                     continue;
 
+
+                var texture = c.Texture.Texture.Texture;
+                var clipRect = new Rectangle?(c.Texture.ClipRect);
+                var scaleFix = ((patch_MTexture) c.Texture).ScaleFix;
+                var origin = (-c.Texture.DrawOffset) / scaleFix;
+
                 Vector2 pos = position + (offset + new Vector2(c.XOffset, c.YOffset) - justifyOffs) * scale;
+                scale *= scaleFix;
+
                 if (stroke > 0f && !Outline) {
                     if (edgeDepth > 0f) {
-                        c.Texture.Draw(pos + new Vector2(0f, -stroke), Vector2.Zero, strokeColor, scale);
+                        //c.Texture.Draw(pos + new Vector2(0f, -stroke), Vector2.Zero, strokeColor, scale);
+                        batch.Draw(texture, pos + new Vector2(0f, -stroke), c.Texture.ClipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
                         for (float num2 = -stroke; num2 < edgeDepth + stroke; num2 += stroke) {
-                            c.Texture.Draw(pos + new Vector2(-stroke, num2), Vector2.Zero, strokeColor, scale);
-                            c.Texture.Draw(pos + new Vector2(stroke, num2), Vector2.Zero, strokeColor, scale);
+                            batch.Draw(texture, pos + new Vector2(-stroke, num2), clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                            batch.Draw(texture, pos + new Vector2(stroke, num2), clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
                         }
-                        c.Texture.Draw(pos + new Vector2(-stroke, edgeDepth + stroke), Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(0f, edgeDepth + stroke), Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(stroke, edgeDepth + stroke), Vector2.Zero, strokeColor, scale);
+                        batch.Draw(texture, pos + new Vector2(-stroke, edgeDepth + stroke), clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(0f, edgeDepth + stroke), clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(stroke, edgeDepth + stroke), clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
                     } else {
-                        c.Texture.Draw(pos + new Vector2(-1f, -1f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(0f, -1f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(1f, -1f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(-1f, 0f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(1f, 0f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(-1f, 1f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(0f, 1f) * stroke, Vector2.Zero, strokeColor, scale);
-                        c.Texture.Draw(pos + new Vector2(1f, 1f) * stroke, Vector2.Zero, strokeColor, scale);
+                        batch.Draw(texture, pos + new Vector2(-1f, -1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(0f, -1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(1f, -1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(-1f, 0f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(1f, 0f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(-1f, 1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(0f, 1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
+                        batch.Draw(texture, pos + new Vector2(1f, 1f) * stroke, clipRect, strokeColor, 0f, origin, scale, SpriteEffects.None, 0f);
                     }
                 }
 
                 if (edgeDepth > 0f)
-                    c.Texture.Draw(pos + Vector2.UnitY * edgeDepth, Vector2.Zero, edgeColor, scale);
+                    batch.Draw(texture, pos + Vector2.UnitY * edgeDepth, clipRect, edgeColor, 0f, origin, scale, SpriteEffects.None, 0f);
 
                 Color cColor = color;
                 if (Emoji.Start <= c.Character &&
@@ -80,7 +92,7 @@ namespace Monocle {
                     !Emoji.IsMonochrome((char) c.Character)) {
                     cColor = new Color(color.A, color.A, color.A, color.A);
                 }
-                c.Texture.Draw(pos, Vector2.Zero, cColor, scale);
+                batch.Draw(texture, pos, clipRect, cColor, 0f, origin, scale, SpriteEffects.None, 0f);
 
                 offset.X += c.XAdvance;
 
